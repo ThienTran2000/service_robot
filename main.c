@@ -27,11 +27,11 @@
 #include "stdio.h"
 
 #define ki_s 0
-#define kp_s 2
+#define kp_s 5
 #define kd_s 0
 #define t 0.02
 #define pi 3.14159265358979323846
-struct motor
+typedef struct motor
 	{		
 		volatile long long pos;
 		volatile short encoder;
@@ -45,27 +45,46 @@ struct motor
 		float I_p;
 		float kp;
 		float ki;
-	};
+	}motor;
+	
+typedef struct HC_SR04{
+	uint8_t Is_Fist_Captured;
+	uint32_t ICValue_1;
+	uint32_t ICValue_2;
+	uint32_t Dis;
+} HC_SR04;
+
+unsigned char STATE;
+
 int i=0;
 int j=0;
 //char a[10];
-float err = 0;
+
 float PID=0;
-int stop = 0;
+int STOP = 0;
 int SENSOR_p1 = 0;
 int RUN = 1;
 
+//////////////////////////////////////////////////////////////////////////////HC_SR04
+HC_SR04 HC_SR04_1;
+HC_SR04 HC_SR04_2;
+HC_SR04 HC_SR04_3;
+//////////////////////////////////////////////////////////////////////////////	
+
+//////////////////////////////////////////////////////////////////////////////uart
 int a[]={1,0,2,0,6};
 int l=sizeof a/sizeof a[1];
+//////////////////////////////////////////////////////////////////////////////sensor
 int SENSOR_p = 31,SENSOR, SENSOR1, SENSOR2, SENSOR3, SENSOR4, SENSOR5;
-
-struct motor motorA = {0,0,0,0,0,0,0,0,0,0,62.8,648.5};
-struct motor motorB = {0,0,0,0,0,0,0,0,0,0,73.49,683.75};
+float err = 0;
+//////////////////////////////////////////////////////////////////////////////motor
+motor motorA = {0,0,0,0,0,0,0,0,0,0,62.8,648.5};
+motor motorB = {0,0,0,0,0,0,0,0,0,0,73.49,683.75};
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-void PIDVel(struct motor *motor, float SP) // SP don vi la xung/s
+void PIDVel(motor *motor, float SP) // SP don vi la xung/s
 	{
 		motor->err = SP - motor->vel;	
 		motor->P = motor->kp*motor->err;
@@ -154,8 +173,8 @@ void ReadSensor()
 		case 0:
 			if (SENSOR_p1!=0)
 				{
-					stop ++;
-					if (stop>l)
+					STOP ++;
+					if (STOP>l)
 						RUN = 1;
 					else
 						RUN =0;
@@ -236,15 +255,14 @@ void rotate_B(int pwm)
 /* USER CODE BEGIN 0 */
 // don vi la rpm
 //float DesiredVelB = 150; // don vi la rpm
-uint8_t Is_Fist_Captured, trangthai;
-uint32_t ICValue_1 = 0, ICValue_2 = 0, T, Dis =0;
+
 
 void checkHC_SR04()
 {
-	if (Dis > 60)
-		trangthai = 1;
+	if ((HC_SR04_1.Dis > 50)||(HC_SR04_2.Dis > 50)||(HC_SR04_3.Dis > 50))
+		STATE = 1;
 	else 
-		trangthai = 0;
+		STATE = 0;
 }
 
 void delay(uint16_t time)
@@ -255,29 +273,65 @@ void delay(uint16_t time)
 void read_HC_SR04()
 {
 	__HAL_TIM_SET_CAPTUREPOLARITY(&htim1, TIM_CHANNEL_1, TIM_INPUTCHANNELPOLARITY_RISING);
-	Is_Fist_Captured =0;
+	__HAL_TIM_SET_CAPTUREPOLARITY(&htim1, TIM_CHANNEL_2, TIM_INPUTCHANNELPOLARITY_RISING);
+	__HAL_TIM_SET_CAPTUREPOLARITY(&htim1, TIM_CHANNEL_3, TIM_INPUTCHANNELPOLARITY_RISING);
+	__HAL_TIM_SET_CAPTUREPOLARITY(&htim1, TIM_CHANNEL_4, TIM_INPUTCHANNELPOLARITY_RISING);
+	HC_SR04_1.Is_Fist_Captured =0;
+	HC_SR04_2.Is_Fist_Captured =0;
+	HC_SR04_3.Is_Fist_Captured =0;
 	//Dis = 0;
 	HAL_GPIO_WritePin(trig_GPIO_Port, trig_Pin, GPIO_PIN_SET);
 	delay(10);
 	HAL_GPIO_WritePin(trig_GPIO_Port, trig_Pin, GPIO_PIN_RESET);
+	__HAL_TIM_SET_COUNTER(&htim1, 0);
 	//__HAL_TIM_ENABLE_IT(&htim1, TIM_IT_CC1);
 }
+
+
 void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim)
 {
 	if(htim -> Channel==HAL_TIM_ACTIVE_CHANNEL_1)
 	{
-		if(Is_Fist_Captured == 0)
+		if(HC_SR04_1.Is_Fist_Captured == 0)
 		{
-			__HAL_TIM_SET_COUNTER(&htim1, 0);
-			Is_Fist_Captured = 1;
+			HC_SR04_1.ICValue_1 = HAL_TIM_ReadCapturedValue(&htim1, TIM_CHANNEL_1);
+			HC_SR04_1.Is_Fist_Captured = 1;
 			__HAL_TIM_SET_CAPTUREPOLARITY(htim, TIM_CHANNEL_1, TIM_INPUTCHANNELPOLARITY_FALLING);
 		}
-		else if(Is_Fist_Captured == 1)
+		else if(HC_SR04_1.Is_Fist_Captured == 1)
 		{
-			ICValue_2 = HAL_TIM_ReadCapturedValue(&htim1, TIM_CHANNEL_1);
-			//__HAL_TIM_SET_COUNTER(htim, 0);
-			Dis = (int)(ICValue_2/58);			
-			//__HAL_TIM_DISABLE_IT(&htim1, TIM_IT_CC1);
+			HC_SR04_1.ICValue_2 = HAL_TIM_ReadCapturedValue(&htim1, TIM_CHANNEL_1);
+			HC_SR04_1.Dis = (int)((HC_SR04_1.ICValue_2-HC_SR04_1.ICValue_1)/58);			
+		}			
+	}
+	////////////////////////////////////////////////
+	if(htim -> Channel==HAL_TIM_ACTIVE_CHANNEL_4)
+	{
+		if(HC_SR04_2.Is_Fist_Captured == 0)
+		{
+			HC_SR04_2.ICValue_1 = HAL_TIM_ReadCapturedValue(&htim1, TIM_CHANNEL_4);
+			HC_SR04_2.Is_Fist_Captured = 1;
+			__HAL_TIM_SET_CAPTUREPOLARITY(htim, TIM_CHANNEL_4, TIM_INPUTCHANNELPOLARITY_FALLING);
+		}
+		else if(HC_SR04_2.Is_Fist_Captured == 1)
+		{
+			HC_SR04_2.ICValue_2 = HAL_TIM_ReadCapturedValue(&htim1, TIM_CHANNEL_4);
+			HC_SR04_2.Dis = (int)((HC_SR04_2.ICValue_2-HC_SR04_2.ICValue_1)/58);			
+		}			
+	}
+	////////////////////////////////////////////////////////
+	if(htim -> Channel==HAL_TIM_ACTIVE_CHANNEL_3)
+	{
+		if(HC_SR04_3.Is_Fist_Captured == 0)
+		{
+			HC_SR04_3.ICValue_1 = HAL_TIM_ReadCapturedValue(&htim1, TIM_CHANNEL_3);
+			HC_SR04_3.Is_Fist_Captured = 1;
+			__HAL_TIM_SET_CAPTUREPOLARITY(htim, TIM_CHANNEL_3, TIM_INPUTCHANNELPOLARITY_FALLING);
+		}
+		else if(HC_SR04_3.Is_Fist_Captured == 1)
+		{
+			HC_SR04_3.ICValue_2 = HAL_TIM_ReadCapturedValue(&htim1, TIM_CHANNEL_3);
+			HC_SR04_3.Dis = (int)((HC_SR04_3.ICValue_2-HC_SR04_3.ICValue_1)/58);			
 		}			
 	}
 }
@@ -297,31 +351,28 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 
 		motorA.vel = ((motorA.encoder*50)/1996.8)*2*pi;
 		motorB.vel = ((motorB.encoder*50)/1996.8)*2*pi;
-
-		//sprintf(a,"%f\n", motorB.vel);
-		//HAL_UART_Transmit(&huart2,(uint8_t *)&a,sizeof(a),1000);
 			
 		ReadSensor();	
 		PID = PID_SENSOR();
 		checkHC_SR04();
-		if (trangthai == 1)
+		if (STATE == 1)
 		{
-		if ((stop != l)&&(stop != l*2+1)&&(RUN == 1) )
+		if ((STOP != l)&&(STOP != l*2+1)&&(RUN == 1) )
 			{
 			
 			PIDVel(&motorA, 3 + PID);
 			PIDVel(&motorB, 3 - PID);
 			
-			motorA.pwm -=PID;
-			motorB.pwm +=PID;
+			/*motorA.pwm -=PID;
+			motorB.pwm +=PID;*/
 			
 			rotate_A(motorA.pwm );
 			rotate_B(motorB.pwm );	
 				
 			}
-		else if (((stop <= l)||(stop==l*2+2))&&(RUN == 0) ) 
+		else if (((STOP <= l)||(STOP==l*2+2))&&(RUN == 0) ) 
 		{
-				if(((stop<=l)&&(a[stop-1]!=0))||(stop==l*2+2))
+				if(((STOP<=l)&&(a[STOP-1]!=0))||(STOP==l*2+2))
 					{
 					i++;
 					if (i<200)
@@ -331,14 +382,14 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 						}
 					else 
 					{	
-						if(stop!=l*2+2)
+						if(STOP!=l*2+2)
 							RUN = 1;
 						i=0;
 					}
 					}
 				else RUN =1;
 		}
-		else if (((stop == l)||(stop == l*2+1))&&(RUN == 1) )
+		else if (((STOP == l)||(STOP == l*2+1))&&(RUN == 1) )
 		{
 			j++;
 			if (j<125)
@@ -350,12 +401,12 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 				}
 			else 
 			{	
-				if (stop == l*2+1)
+				if (STOP == l*2+1)
 					RUN=0;
 				else
 					RUN=1;
 				j=0;
-				stop++;
+				STOP++;
 			}
 		}
 	}
@@ -412,6 +463,9 @@ int main(void)
 	HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_3);
 	HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_4);
 	HAL_TIM_IC_Start_IT(&htim1,TIM_CHANNEL_1);
+	HAL_TIM_IC_Start_IT(&htim1,TIM_CHANNEL_2);
+	HAL_TIM_IC_Start_IT(&htim1,TIM_CHANNEL_3);
+	HAL_TIM_IC_Start_IT(&htim1,TIM_CHANNEL_4);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -420,7 +474,7 @@ int main(void)
   {
     /* USER CODE END WHILE */
 		read_HC_SR04();
-		HAL_Delay(200 );
+		HAL_Delay(200);
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
