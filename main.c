@@ -31,82 +31,87 @@
 #define kd_s 0
 #define t 0.02
 #define pi 3.14159265358979323846
-typedef struct motor
-	{		
-		volatile long long pos;
-		volatile short encoder;
-		int pwm;
-		float vel;
-		float err;
-		float err_p;	
-		float P;
-		float I;
-		float D;
-		float I_p;
-		float kp;
-		float ki;
-	}motor;
+#define DELAY 200
+#define REVERSE 125
+
+
+typedef struct MOTOR
+{		
+	volatile long long pos;
+	volatile short encoder;
+	int pwm;
+	float vel;
+	float err;
+	float err_p;	
+	float P;
+	float I;
+	float D;
+	float I_p;
+	float kp;
+	float ki;
+} MOTOR;
 	
-typedef struct HC_SR04{
+typedef struct HC_SR04
+{
 	uint8_t Is_Fist_Captured;
 	uint32_t ICValue_1;
 	uint32_t ICValue_2;
 	uint32_t Dis;
 } HC_SR04;
 
-unsigned char STATE;
+unsigned char STATE; // 0 if result of Check_HC_SR04 < 50 and 1 contrary
+int DELAY_COUNT = 0; // count up if robot stop at state
+int REVERSE_COUNT = 0;
+int a[] = {7 , 0, 8, 0, 0};
+int L = 5; // length of arr;
+float PID = 0; // result of PIDSensor
+int LINE = 0; // count up if robot reach line
+int RUN = 1; 
 
-int i=0;
-int j=0;
-//char a[10];
-
-float PID=0;
-int STOP = 0;
-int SENSOR_p1 = 0;
-int RUN = 1;
-
-//////////////////////////////////////////////////////////////////////////////HC_SR04
+///////////////////////////////////////////////////////////HC_SR04
 HC_SR04 HC_SR04_1;
 HC_SR04 HC_SR04_2;
 HC_SR04 HC_SR04_3;
-//////////////////////////////////////////////////////////////////////////////	
-
-//////////////////////////////////////////////////////////////////////////////uart
-int a[]={1,0,2,0,6};
-int l=sizeof a/sizeof a[1];
-//////////////////////////////////////////////////////////////////////////////sensor
-int SENSOR_p = 31,SENSOR, SENSOR1, SENSOR2, SENSOR3, SENSOR4, SENSOR5;
+///////////////////////////////////////////////////////////sensor
+int SENSOR_p = 31;
+int SENSOR_p1 = 0;
+int SENSOR;
+int SENSOR1;
+int SENSOR2;
+int SENSOR3;
+int SENSOR4;
+int SENSOR5;
 float err = 0;
 //////////////////////////////////////////////////////////////////////////////motor
-motor motorA = {0,0,0,0,0,0,0,0,0,0,62.8,648.5};
-motor motorB = {0,0,0,0,0,0,0,0,0,0,73.49,683.75};
+MOTOR motorA = {0,0,0,0,0,0,0,0,0,0,62.8,648.5};
+MOTOR motorB = {0,0,0,0,0,0,0,0,0,0,73.49,683.75};
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-void PIDVel(motor *motor, float SP) // SP don vi la xung/s
-	{
-		motor->err = SP - motor->vel;	
-		motor->P = motor->kp*motor->err;
-		motor->I = motor->I_p + motor->ki*motor->err*t;
-		if (motor->I >1000)
-			motor->I = 1000;
-		else if (motor->I < -1000)
-			motor->I = -1000;
-		//motor->D = kd*(motor->err - motor->err_p)/t;
-		
-		motor->err_p = motor->err;
-		motor->I_p = motor->I;
-		
-		motor->pwm = (int)(motor->P + motor->I );
-		
-		if (motor->pwm >1000)
-			motor->pwm = 1000;
-		else if (motor->pwm < -1000)
-			motor->pwm = -1000;
-	}
+void PIDVel(MOTOR *motor, float SP) // SP is setpoint (Rad/s)
+{
+	motor->err = SP - motor->vel;	
+	motor->P = motor->kp*motor->err;
+	motor->I = motor->I_p + motor->ki*motor->err*t;
+	if (motor->I >1000)
+		motor->I = 1000;
+	else if (motor->I < -1000)
+		motor->I = -1000;
+	//motor->D = kd*(motor->err - motor->err_p)/t;
+	
+	motor->err_p = motor->err;
+	motor->I_p = motor->I;
+	
+	motor->pwm = (int)(motor->P + motor->I );
+	
+	if (motor->pwm >1000)
+		motor->pwm = 1000;
+	else if (motor->pwm < -1000)
+		motor->pwm = -1000;
+}
 
-float PID_SENSOR()
+float PIDSensor()
 {
 	static float P = 0, I=0, D=0, err_p = 0;
 	static float PID_Value = 0;
@@ -171,14 +176,11 @@ void ReadSensor()
 			err = 0.4;
 			break;
 		case 0:
-			if (SENSOR_p1!=0)
-				{
-					STOP ++;
-					if (STOP>l)
-						RUN = 1;
-					else
-						RUN =0;
-				} 
+			if (SENSOR_p1 != 0)
+			{
+				LINE ++;
+				RUN = 0;
+			} 
 		default:
 			if((SENSOR_p == 15)||(SENSOR_p == 7)||(SENSOR_p == 23)||(SENSOR_p == 19))
 				err = -0.5;
@@ -217,7 +219,8 @@ static void MX_USART1_UART_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_TIM1_Init(void);
 /* USER CODE BEGIN PFP */
-void rotate_A(int pwm)
+///////////////////////////////////////////////////////////
+void Rotate_A(int pwm)
 {
 	if (pwm<0)
 	{
@@ -232,8 +235,8 @@ void rotate_A(int pwm)
 		__HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_3,pwm);
 	}
 }
-//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-void rotate_B(int pwm)
+///////////////////////////////////////////////////////////
+void Rotate_B(int pwm)
 {
 	if (pwm<0)
 	{
@@ -248,46 +251,132 @@ void rotate_B(int pwm)
 		__HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_4,pwm);
 	}
 }
-
+///////////////////////////////////////////////////////////
+void GetLength() // check length of array
+{
+	int i = 4;
+	while (a[i] <= 0 && i>=0)
+	{
+		L--;
+		i--;
+	}
+}
+///////////////////////////////////////////////////////////
+void StopRobot() // Stop robot
+{
+	Rotate_A(0);
+	Rotate_B(0);
+}
+///////////////////////////////////////////////////////////
+void StopMotor()  // stop motor when robot reach line
+{
+	DELAY_COUNT++;
+	if (DELAY_COUNT < DELAY)
+	{
+		StopRobot();
+	}
+	else
+	{
+		DELAY_COUNT = 0;
+		RUN = 1;
+	}
+}
+///////////////////////////////////////////////////////////
+void RunMotor() // run motor when robot on way
+{
+	PIDVel(&motorA, 3 + PID);
+	PIDVel(&motorB, 3 - PID);
+	Rotate_A(motorA.pwm );
+	Rotate_B(motorB.pwm );	
+}
+///////////////////////////////////////////////////////////
+void ReverseMotor() // reverse motor when robot reach end line or begin line
+{
+	REVERSE_COUNT ++;
+	if (REVERSE_COUNT < REVERSE)
+	{
+		PIDVel(&motorA, 4);
+		PIDVel(&motorB, -4);
+		Rotate_A(motorA.pwm );
+		Rotate_B(motorB.pwm );
+	}
+	else
+	{
+		REVERSE_COUNT = 0;
+		if (LINE == L || LINE == 2*L + 1)
+			LINE++;
+	}
+}
+///////////////////////////////////////////////////////////
+void OperateRobot()
+{
+	if (LINE == 0)
+		RunMotor();
+	else if (LINE > 0 && LINE <= L)
+	{
+		if (a[LINE - 1] != 0)
+		{
+			if (RUN == 0)
+				StopMotor();
+			else 
+			{
+				if (LINE == L)
+					ReverseMotor();
+				else
+					RunMotor();
+			}
+		}
+		else
+			RunMotor();
+	}
+	else
+	{
+		if (LINE == 2*L + 1)
+			ReverseMotor();
+		else if (LINE == 2*L + 2)
+			StopRobot();
+		else
+			RunMotor();
+	}
+}
+///////////////////////////////////////////////////////////
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-// don vi la rpm
-//float DesiredVelB = 150; // don vi la rpm
-
-
-void checkHC_SR04()
+///////////////////////////////////////////////////////////
+void CheckHC_SR04()
 {
 	if ((HC_SR04_1.Dis > 50)||(HC_SR04_2.Dis > 50)||(HC_SR04_3.Dis > 50))
 		STATE = 1;
 	else 
 		STATE = 0;
 }
-
+///////////////////////////////////////////////////////////
 void delay(uint16_t time)
 {
 	__HAL_TIM_SET_COUNTER(&htim1, 0);
 	while(__HAL_TIM_GET_COUNTER(&htim1)<time);
 }
+///////////////////////////////////////////////////////////
 void read_HC_SR04()
 {
 	__HAL_TIM_SET_CAPTUREPOLARITY(&htim1, TIM_CHANNEL_1, TIM_INPUTCHANNELPOLARITY_RISING);
 	__HAL_TIM_SET_CAPTUREPOLARITY(&htim1, TIM_CHANNEL_2, TIM_INPUTCHANNELPOLARITY_RISING);
 	__HAL_TIM_SET_CAPTUREPOLARITY(&htim1, TIM_CHANNEL_3, TIM_INPUTCHANNELPOLARITY_RISING);
 	__HAL_TIM_SET_CAPTUREPOLARITY(&htim1, TIM_CHANNEL_4, TIM_INPUTCHANNELPOLARITY_RISING);
+	
 	HC_SR04_1.Is_Fist_Captured =0;
 	HC_SR04_2.Is_Fist_Captured =0;
 	HC_SR04_3.Is_Fist_Captured =0;
-	//Dis = 0;
+
 	HAL_GPIO_WritePin(trig_GPIO_Port, trig_Pin, GPIO_PIN_SET);
 	delay(10);
 	HAL_GPIO_WritePin(trig_GPIO_Port, trig_Pin, GPIO_PIN_RESET);
 	__HAL_TIM_SET_COUNTER(&htim1, 0);
 	//__HAL_TIM_ENABLE_IT(&htim1, TIM_IT_CC1);
 }
-
-
+///////////////////////////////////////////////////////////
 void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim)
 {
 	if(htim -> Channel==HAL_TIM_ACTIVE_CHANNEL_1)
@@ -319,7 +408,7 @@ void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim)
 			HC_SR04_2.Dis = (int)((HC_SR04_2.ICValue_2-HC_SR04_2.ICValue_1)/58);			
 		}			
 	}
-	////////////////////////////////////////////////////////
+	///////////////////////////////////////////////
 	if(htim -> Channel==HAL_TIM_ACTIVE_CHANNEL_3)
 	{
 		if(HC_SR04_3.Is_Fist_Captured == 0)
@@ -335,16 +424,13 @@ void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim)
 		}			
 	}
 }
-
+///////////////////////////////////////////////////////////
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
 	if(htim -> Instance==htim10.Instance)
 	{			
 		motorA.encoder = __HAL_TIM_GET_COUNTER(&htim3);
 		motorB.encoder = __HAL_TIM_GET_COUNTER(&htim4);
-		
-		//motorA.pos += motorA.encoder;
-		//motorB.pos += motorB.encoder;
 
 		__HAL_TIM_SET_COUNTER(&htim3,0);
 		__HAL_TIM_SET_COUNTER(&htim4,0);
@@ -353,70 +439,19 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 		motorB.vel = ((motorB.encoder*50)/1996.8)*2*pi;
 			
 		ReadSensor();	
-		PID = PID_SENSOR();
-		checkHC_SR04();
+		PID = PIDSensor();
+		CheckHC_SR04();
 		if (STATE == 1)
 		{
-		if ((STOP != l)&&(STOP != l*2+1)&&(RUN == 1) )
-			{
-			
-			PIDVel(&motorA, 3 + PID);
-			PIDVel(&motorB, 3 - PID);
-			
-			/*motorA.pwm -=PID;
-			motorB.pwm +=PID;*/
-			
-			rotate_A(motorA.pwm );
-			rotate_B(motorB.pwm );	
-				
-			}
-		else if (((STOP <= l)||(STOP==l*2+2))&&(RUN == 0) ) 
-		{
-				if(((STOP<=l)&&(a[STOP-1]!=0))||(STOP==l*2+2))
-					{
-					i++;
-					if (i<200)
-						{
-						rotate_A(0);
-						rotate_B(0);
-						}
-					else 
-					{	
-						if(STOP!=l*2+2)
-							RUN = 1;
-						i=0;
-					}
-					}
-				else RUN =1;
+			OperateRobot();
 		}
-		else if (((STOP == l)||(STOP == l*2+1))&&(RUN == 1) )
+		else
 		{
-			j++;
-			if (j<125)
-				{
-				PIDVel(&motorA, 4);
-				PIDVel(&motorB, -4);
-				rotate_A(motorA.pwm );
-				rotate_B(motorB.pwm );
-				}
-			else 
-			{	
-				if (STOP == l*2+1)
-					RUN=0;
-				else
-					RUN=1;
-				j=0;
-				STOP++;
-			}
-		}
-	}
-	else
-		{
-			rotate_A(0);
-			rotate_B(0);
+			StopRobot();
 		}
  	}
 }
+///////////////////////////////////////////////////////////
 /* USER CODE END 0 */
 
 /**
@@ -466,6 +501,8 @@ int main(void)
 	HAL_TIM_IC_Start_IT(&htim1,TIM_CHANNEL_2);
 	HAL_TIM_IC_Start_IT(&htim1,TIM_CHANNEL_3);
 	HAL_TIM_IC_Start_IT(&htim1,TIM_CHANNEL_4);
+	
+	GetLength();
   /* USER CODE END 2 */
 
   /* Infinite loop */
