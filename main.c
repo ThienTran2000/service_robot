@@ -32,7 +32,7 @@
 #define t 0.02
 #define pi 3.14159265358979323846
 #define DELAY 200
-#define REVERSE 125
+#define REVERSE 130
 
 
 typedef struct MOTOR
@@ -62,16 +62,17 @@ typedef struct HC_SR04
 unsigned char STATE; // 0 if result of Check_HC_SR04 < 50 and 1 contrary
 int DELAY_COUNT = 0; // count up if robot stop at state
 int REVERSE_COUNT = 0;
-int a[] = {7 , 0, 8, 0, 0};
-int L = 5; // length of arr;
-float PID = 0; // result of PIDSensor
+int a[] = {0 , 0, 0, 0, 0};
+int L = 0; // length of arr;
+float PID = 0; // result of PIDSensor 
 int LINE = 0; // count up if robot reach line
 int RUN = 1; 
-
 ///////////////////////////////////////////////////////////HC_SR04
 HC_SR04 HC_SR04_1;
 HC_SR04 HC_SR04_2;
 HC_SR04 HC_SR04_3;
+///////////////////////////////////////////////////////////uart
+uint8_t receive_data[5];
 ///////////////////////////////////////////////////////////sensor
 int SENSOR_p = 31;
 int SENSOR_p1 = 0;
@@ -203,6 +204,8 @@ TIM_HandleTypeDef htim10;
 
 UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
+DMA_HandleTypeDef hdma_usart1_rx;
+DMA_HandleTypeDef hdma_usart2_rx;
 
 /* USER CODE BEGIN PV */
 
@@ -211,6 +214,7 @@ UART_HandleTypeDef huart2;
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
+static void MX_DMA_Init(void);
 static void MX_TIM2_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_TIM4_Init(void);
@@ -254,6 +258,7 @@ void Rotate_B(int pwm)
 ///////////////////////////////////////////////////////////
 void GetLength() // check length of array
 {
+	L = 5;
 	int i = 4;
 	while (a[i] <= 0 && i>=0)
 	{
@@ -350,7 +355,7 @@ void CheckHC_SR04()
 	if ((HC_SR04_1.Dis > 50)||(HC_SR04_2.Dis > 50)||(HC_SR04_3.Dis > 50))
 		STATE = 1;
 	else 
-		STATE = 0;
+		STATE = 1;
 }
 ///////////////////////////////////////////////////////////
 void delay(uint16_t time)
@@ -441,7 +446,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 		ReadSensor();	
 		PID = PIDSensor();
 		CheckHC_SR04();
-		if (STATE == 1)
+		if (STATE == 1 && L != 0)
 		{
 			OperateRobot();
 		}
@@ -450,6 +455,18 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 			StopRobot();
 		}
  	}
+}
+///////////////////////////////////////////////////////////
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+	if (huart->Instance == huart2.Instance)
+	{
+		for (int k = 0; k < 5; k++)
+		{
+			a[k] = receive_data[k] - 48;
+		}
+		GetLength();
+	}
 }
 ///////////////////////////////////////////////////////////
 /* USER CODE END 0 */
@@ -481,6 +498,7 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_DMA_Init();
   MX_TIM2_Init();
   MX_TIM3_Init();
   MX_TIM4_Init();
@@ -503,6 +521,7 @@ int main(void)
 	HAL_TIM_IC_Start_IT(&htim1,TIM_CHANNEL_4);
 	
 	GetLength();
+	HAL_UART_Receive_DMA(&huart2, receive_data, 5);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -888,6 +907,26 @@ static void MX_USART2_UART_Init(void)
 }
 
 /**
+  * Enable DMA controller clock
+  */
+static void MX_DMA_Init(void)
+{
+
+  /* DMA controller clock enable */
+  __HAL_RCC_DMA1_CLK_ENABLE();
+  __HAL_RCC_DMA2_CLK_ENABLE();
+
+  /* DMA interrupt init */
+  /* DMA1_Stream5_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Stream5_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Stream5_IRQn);
+  /* DMA2_Stream2_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA2_Stream2_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA2_Stream2_IRQn);
+
+}
+
+/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -902,6 +941,7 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOE_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
   __HAL_RCC_GPIOD_CLK_ENABLE();
+  __HAL_RCC_GPIOC_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOA, MOTORA_1_Pin|MOTORA_2_Pin, GPIO_PIN_RESET);
@@ -933,6 +973,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
   HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : BUTTON_Pin */
+  GPIO_InitStruct.Pin = BUTTON_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(BUTTON_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : trig_Pin */
   GPIO_InitStruct.Pin = trig_Pin;
