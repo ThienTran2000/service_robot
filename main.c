@@ -66,13 +66,17 @@ int a[] = {0 , 0, 0, 0, 0};
 int L = 0; // length of arr;
 float PID = 0; // result of PIDSensor 
 int LINE = 0; // count up if robot reach line
-int RUN = 1; 
+int RUN = 1;
+int COUNT_UART_IT = 0;
 ///////////////////////////////////////////////////////////HC_SR04
 HC_SR04 HC_SR04_1;
 HC_SR04 HC_SR04_2;
 HC_SR04 HC_SR04_3;
 ///////////////////////////////////////////////////////////uart
 uint8_t receive_data[5];
+uint8_t prepare_data[2];
+uint8_t is_fist_transmit = 0;
+uint8_t send_data;
 ///////////////////////////////////////////////////////////sensor
 int SENSOR_p = 31;
 int SENSOR_p1 = 0;
@@ -256,6 +260,17 @@ void Rotate_B(int pwm)
 	}
 }
 ///////////////////////////////////////////////////////////
+void ResetVariable()
+{
+	DELAY_COUNT = 0;
+	REVERSE_COUNT = 0;
+	L = 0;
+	PID = 0;
+	LINE = 0;
+	RUN = 1;
+	COUNT_UART_IT = 0;
+}
+///////////////////////////////////////////////////////////
 void GetLength() // check length of array
 {
 	L = 5;
@@ -264,6 +279,28 @@ void GetLength() // check length of array
 	{
 		L--;
 		i--;
+	}
+}
+///////////////////////////////////////////////////////////
+void ReceiveData()
+{
+	for (int k = 0; k < 5; k++)
+	{
+		a[k] = receive_data[k] - 48;
+	}
+	ResetVariable();
+	GetLength();
+}
+///////////////////////////////////////////////////////////
+void TransmitData()
+{
+	if (is_fist_transmit == 0)
+	{
+		prepare_data[0] = LINE;
+		prepare_data[1] = 1;
+		send_data = prepare_data[0]*10 + prepare_data[1];
+		HAL_UART_Transmit_IT(&huart2, &send_data, 1);
+		is_fist_transmit = 1;
 	}
 }
 ///////////////////////////////////////////////////////////
@@ -279,11 +316,13 @@ void StopMotor()  // stop motor when robot reach line
 	if (DELAY_COUNT < DELAY)
 	{
 		StopRobot();
+		TransmitData();
 	}
 	else
 	{
 		DELAY_COUNT = 0;
 		RUN = 1;
+		is_fist_transmit = 0;
 	}
 }
 ///////////////////////////////////////////////////////////
@@ -295,7 +334,7 @@ void RunMotor() // run motor when robot on way
 	Rotate_B(motorB.pwm );	
 }
 ///////////////////////////////////////////////////////////
-void ReverseMotor() // reverse motor when robot reach end line or begin line
+void ReverseRobot() // reverse motor when robot reach end line or begin line
 {
 	REVERSE_COUNT ++;
 	if (REVERSE_COUNT < REVERSE)
@@ -326,7 +365,7 @@ void OperateRobot()
 			else 
 			{
 				if (LINE == L)
-					ReverseMotor();
+					ReverseRobot();
 				else
 					RunMotor();
 			}
@@ -337,7 +376,7 @@ void OperateRobot()
 	else
 	{
 		if (LINE == 2*L + 1)
-			ReverseMotor();
+			ReverseRobot();
 		else if (LINE == 2*L + 2)
 			StopRobot();
 		else
@@ -461,14 +500,11 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
 	if (huart->Instance == huart2.Instance)
 	{
-		for (int k = 0; k < 5; k++)
-		{
-			a[k] = receive_data[k] - 48;
-		}
-		GetLength();
+		ReceiveData();
 	}
 }
 ///////////////////////////////////////////////////////////
+int dem = 0;
 /* USER CODE END 0 */
 
 /**
@@ -519,7 +555,7 @@ int main(void)
 	HAL_TIM_IC_Start_IT(&htim1,TIM_CHANNEL_2);
 	HAL_TIM_IC_Start_IT(&htim1,TIM_CHANNEL_3);
 	HAL_TIM_IC_Start_IT(&htim1,TIM_CHANNEL_4);
-	
+
 	GetLength();
 	HAL_UART_Receive_DMA(&huart2, receive_data, 5);
   /* USER CODE END 2 */
@@ -531,6 +567,8 @@ int main(void)
     /* USER CODE END WHILE */
 		read_HC_SR04();
 		HAL_Delay(200);
+		if (HAL_GPIO_ReadPin(BUTTON_GPIO_Port, BUTTON_Pin)==0)
+			dem++;
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
@@ -977,7 +1015,7 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pin : BUTTON_Pin */
   GPIO_InitStruct.Pin = BUTTON_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(BUTTON_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : trig_Pin */
