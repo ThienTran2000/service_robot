@@ -31,7 +31,7 @@
 #define kd_s 0
 #define t 0.02
 #define pi 3.14159265358979323846
-#define DELAY 200
+#define DELAY 500
 #define REVERSE 130
 
 
@@ -68,6 +68,8 @@ float PID = 0; // result of PIDSensor
 int LINE = 0; // count up if robot reach line
 int RUN = 1;
 int COUNT_UART_IT = 0;
+///////////////////////////////////////////////////////////button
+uint8_t is_fist_press = 0;
 ///////////////////////////////////////////////////////////HC_SR04
 HC_SR04 HC_SR04_1;
 HC_SR04 HC_SR04_2;
@@ -294,13 +296,23 @@ void ReceiveData()
 ///////////////////////////////////////////////////////////
 void TransmitData()
 {
-	if (is_fist_transmit == 0)
-	{
 		prepare_data[0] = LINE;
-		prepare_data[1] = 1;
 		send_data = prepare_data[0]*10 + prepare_data[1];
 		HAL_UART_Transmit_IT(&huart2, &send_data, 1);
 		is_fist_transmit = 1;
+}
+///////////////////////////////////////////////////////////
+void CheckButton()
+{
+	if(is_fist_press == 0)
+	{
+		if(HAL_GPIO_ReadPin(BUTTON_GPIO_Port, BUTTON_Pin)==0)
+		{
+			is_fist_press = 1;
+			DELAY_COUNT = 400;
+			prepare_data[1] = 1;
+			TransmitData();
+		}
 	}
 }
 ///////////////////////////////////////////////////////////
@@ -316,13 +328,19 @@ void StopMotor()  // stop motor when robot reach line
 	if (DELAY_COUNT < DELAY)
 	{
 		StopRobot();
-		TransmitData();
+		CheckButton();
 	}
 	else
 	{
 		DELAY_COUNT = 0;
 		RUN = 1;
+		if (is_fist_transmit == 0)
+		{
+			prepare_data[1] = 2;
+			TransmitData();
+		}
 		is_fist_transmit = 0;
+		is_fist_press = 0;
 	}
 }
 ///////////////////////////////////////////////////////////
@@ -504,7 +522,6 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 	}
 }
 ///////////////////////////////////////////////////////////
-int dem = 0;
 /* USER CODE END 0 */
 
 /**
@@ -567,8 +584,8 @@ int main(void)
     /* USER CODE END WHILE */
 		read_HC_SR04();
 		HAL_Delay(200);
-		if (HAL_GPIO_ReadPin(BUTTON_GPIO_Port, BUTTON_Pin)==0)
-			dem++;
+		if(LINE == 12)
+			L = 0;
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
