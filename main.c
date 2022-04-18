@@ -79,6 +79,7 @@ uint8_t receive_data[5];
 uint8_t prepare_data[2];
 uint8_t is_fist_transmit = 0;
 uint8_t send_data;
+uint8_t info_data;
 ///////////////////////////////////////////////////////////sensor
 int SENSOR_p = 31;
 int SENSOR_p1 = 0;
@@ -316,6 +317,18 @@ void CheckButton()
 	}
 }
 ///////////////////////////////////////////////////////////
+void Inform()
+{
+	if (is_fist_press == 0)
+	{
+		if (DELAY_COUNT == 10 || DELAY_COUNT == DELAY - 200)
+		{		
+			info_data = 100 + LINE*10 + a[LINE -1];
+			HAL_UART_Transmit_IT(&huart2, &info_data, 1);
+		}
+	}
+}
+///////////////////////////////////////////////////////////
 void StopRobot() // Stop robot
 {
 	Rotate_A(0);
@@ -328,6 +341,7 @@ void StopMotor()  // stop motor when robot reach line
 	if (DELAY_COUNT < DELAY)
 	{
 		StopRobot();
+		Inform();
 		CheckButton();
 	}
 	else
@@ -518,7 +532,10 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
 	if (huart->Instance == huart2.Instance)
 	{
-		ReceiveData();
+		if(LINE == 0 || LINE == 12)
+		{
+			ReceiveData();
+		}
 	}
 }
 ///////////////////////////////////////////////////////////
@@ -584,8 +601,6 @@ int main(void)
     /* USER CODE END WHILE */
 		read_HC_SR04();
 		HAL_Delay(200);
-		if(LINE == 12)
-			L = 0;
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
